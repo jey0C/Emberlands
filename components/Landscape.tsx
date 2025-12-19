@@ -39,19 +39,21 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const container = containerRef.current;
+    
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0a0c);
     scene.fog = new THREE.FogExp2(0x0a0a0c, 0.02);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(55, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.set(0, 20, 30);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -87,8 +89,8 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
     requestAnimationFrame(animate);
 
     const onPointerDown = (e: MouseEvent) => {
-      if (!containerRef.current || !cameraRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
+      if (!cameraRef.current) return;
+      const rect = container.getBoundingClientRect();
       const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, cameraRef.current);
@@ -96,19 +98,25 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
       if (intersects.length > 0) setSelectedEntry((intersects[0].object as any).userData.entry);
       else setSelectedEntry(null);
     };
-    containerRef.current.addEventListener('mousedown', onPointerDown);
+    container.addEventListener('mousedown', onPointerDown);
 
     const handleResize = () => {
-      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
-      cameraRef.current.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      if (!cameraRef.current || !rendererRef.current) return;
+      cameraRef.current.aspect = container.clientWidth / container.clientHeight;
       cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+      rendererRef.current.setSize(container.clientWidth, container.clientHeight);
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      rendererRef.current?.dispose();
+      container.removeEventListener('mousedown', onPointerDown);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        if (container.contains(rendererRef.current.domElement)) {
+          container.removeChild(rendererRef.current.domElement);
+        }
+      }
     };
   }, []);
 
