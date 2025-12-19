@@ -2,6 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MemoryEntry, EmotionCategory, Insight } from "../types";
 
+// Ensure TypeScript knows process exists in the build environment
+declare const process: {
+  env: {
+    API_KEY: string;
+  };
+};
+
 const extractJson = (text: string) => {
   try {
     const cleanText = text.replace(/```json|```/gi, '').trim();
