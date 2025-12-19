@@ -24,16 +24,17 @@ const formatDate = (ts: number) => {
   }).format(ts);
 };
 
-const MemoryCard = ({ 
-  entry, 
-  isSub = false, 
-  onStartThread,
-  getThreadsFor 
-}: { 
+// Fixed: Using React.FC to properly handle standard React props like 'key' in mapped lists
+const MemoryCard: React.FC<{ 
   entry: MemoryEntry; 
   isSub?: boolean;
   onStartThread?: (entry: MemoryEntry) => void;
   getThreadsFor: (parentId: string) => MemoryEntry[];
+}> = ({ 
+  entry, 
+  isSub = false, 
+  onStartThread,
+  getThreadsFor 
 }) => {
   const threads = isSub ? [] : getThreadsFor(entry.id);
   const mainEmotion = entry.analysis.dominantEmotions[0];
@@ -300,27 +301,30 @@ const App: React.FC = () => {
         <div className="text-[9px] text-gray-600 tracking-widest uppercase text-center mt-8">Local-Only &bull; Encrypted Session</div>
       </div>
 
-      {/* Main UI */}
-      <header className="w-full max-w-6xl px-8 pt-16 pb-12 flex justify-between items-end">
+      {/* Main UI Header - Responsive Fixes */}
+      <header className="w-full max-w-6xl px-8 pt-16 pb-12 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-8 sm:gap-0">
         <div>
           <h1 className="text-5xl font-serif text-white tracking-tighter italic">Emberlands</h1>
           <p className="text-gray-500 font-light mt-2 tracking-[0.2em] uppercase text-[10px]">Private Emotional Terrain</p>
         </div>
-        <div className="flex items-center gap-10">
-          <div className="text-right">
+        <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10 w-full sm:w-auto">
+          <div className="text-left sm:text-right">
             <span className="block text-3xl font-serif text-white/80">{entries.length}</span>
             <span className="block text-[9px] text-gray-600 uppercase tracking-widest">Landmarks</span>
           </div>
-          <button onClick={() => setShowVaultPanel(true)} className="glass px-6 py-2.5 rounded-full text-[10px] text-gray-400 hover:text-white uppercase tracking-widest transition-all border border-white/10 hover:border-white/20">
+          <button 
+            onClick={() => setShowVaultPanel(true)} 
+            className="glass px-6 py-2.5 rounded-full text-[10px] text-gray-400 hover:text-white uppercase tracking-widest transition-all border border-white/10 hover:border-white/20 whitespace-nowrap"
+          >
             Vault Control
           </button>
         </div>
       </header>
 
-      <nav className="w-full max-w-6xl px-8 mb-12 flex gap-4">
-        <div className="flex bg-white/5 p-1 rounded-full border border-white/5 backdrop-blur-xl">
-          <button onClick={() => setActiveTab('landscape')} className={`px-8 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all ${activeTab === 'landscape' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Terrain</button>
-          <button onClick={() => setActiveTab('library')} className={`px-8 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all ${activeTab === 'library' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Library</button>
+      <nav className="w-full max-w-6xl px-8 mb-12 flex gap-4 overflow-x-auto no-scrollbar">
+        <div className="flex bg-white/5 p-1 rounded-full border border-white/5 backdrop-blur-xl shrink-0">
+          <button onClick={() => setActiveTab('landscape')} className={`px-8 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'landscape' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Terrain</button>
+          <button onClick={() => setActiveTab('library')} className={`px-8 py-2 rounded-full text-[10px] uppercase tracking-[0.2em] transition-all whitespace-nowrap ${activeTab === 'library' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Library</button>
         </div>
       </nav>
 
