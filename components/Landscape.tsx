@@ -25,6 +25,9 @@ const emotionZMap: Record<EmotionCategory, number> = {
   [EmotionCategory.Calm]: 0, [EmotionCategory.Excitement]: -6, [EmotionCategory.Anxiety]: 8, [EmotionCategory.Awe]: -16,
 };
 
+// Moved baseColor definition outside to module scope so it's accessible in both useEffect and JSX
+const baseColor = new THREE.Color(0x1a1a1e);
+
 const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedEntry, setSelectedEntry] = useState<MemoryEntry | null>(null);
@@ -35,7 +38,7 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
   const landmarksRef = useRef<THREE.Group>(new THREE.Group());
   const controlsRef = useRef<OrbitControls | null>(null);
 
-  const latestEntries = useMemo(() => [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8), [entries]);
+  const latestEntries = useMemo(() => [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 12), [entries]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -46,47 +49,68 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
     scene.fog = new THREE.FogExp2(0x0a0a0c, 0.02);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 20, 30);
+    const camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight || 1, 0.1, 1000);
+    camera.position.set(0, 25, 35);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.03;
+    controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2.1;
     controlsRef.current = controls;
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x000000, 3));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 4);
-    dirLight.position.set(10, 30, 10);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x000000, 2));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+    dirLight.position.set(15, 40, 15);
     scene.add(dirLight);
 
-    const geometry = new THREE.PlaneGeometry(64, 44, 160, 160);
+    const geometry = new THREE.PlaneGeometry(70, 50, 160, 160);
     geometry.rotateX(-Math.PI / 2);
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3, vertexColors: true, transparent: true, opacity: 0.95 });
+    const material = new THREE.MeshStandardMaterial({ 
+      roughness: 0.7, 
+      metalness: 0.2, 
+      vertexColors: true, 
+      transparent: true, 
+      opacity: 0.95 
+    });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
     meshRef.current = mesh;
     scene.add(landmarksRef.current);
 
+    // Resize handling with ResizeObserver for reliability during animations
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === container) {
+          const { width, height } = entry.contentRect;
+          if (width > 0 && height > 0) {
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+          }
+        }
+      }
+    });
+    resizeObserver.observe(container);
+
     const animate = (time: number) => {
       if (controlsRef.current) controlsRef.current.update();
-      landmarksRef.current.children.forEach(l => {
-        l.position.y += Math.sin(time * 0.002 + l.id) * 0.005;
-        (l as THREE.Mesh).rotation.y += 0.01;
+      landmarksRef.current.children.forEach((l, i) => {
+        l.position.y += Math.sin(time * 0.0015 + i) * 0.003;
+        (l as THREE.Mesh).rotation.y += 0.005;
       });
       if (rendererRef.current && sceneRef.current && cameraRef.current) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
       }
       requestAnimationFrame(animate);
     };
-    requestAnimationFrame(animate);
+    const animId = requestAnimationFrame(animate);
 
     const onPointerDown = (e: MouseEvent) => {
       if (!cameraRef.current) return;
@@ -100,16 +124,9 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
     };
     container.addEventListener('mousedown', onPointerDown);
 
-    const handleResize = () => {
-      if (!cameraRef.current || !rendererRef.current) return;
-      cameraRef.current.aspect = container.clientWidth / container.clientHeight;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(container.clientWidth, container.clientHeight);
-    };
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animId);
+      resizeObserver.disconnect();
       container.removeEventListener('mousedown', onPointerDown);
       if (rendererRef.current) {
         rendererRef.current.dispose();
@@ -125,8 +142,13 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
     if (!mesh) return;
     const geometry = mesh.geometry as THREE.PlaneGeometry;
     const position = geometry.getAttribute('position');
-    const colors = new THREE.Float32BufferAttribute(position.count * 3, 3);
-    const baseColor = new THREE.Color(0x1a1a1e);
+    
+    // Create color attribute if it doesn't exist
+    if (!geometry.getAttribute('color')) {
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(position.count * 3, 3));
+    }
+    
+    const colors = geometry.getAttribute('color');
 
     while(landmarksRef.current.children.length) landmarksRef.current.remove(landmarksRef.current.children[0]);
 
@@ -136,7 +158,7 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
         colors.setXYZ(i, baseColor.r, baseColor.g, baseColor.b);
       }
       position.needsUpdate = true;
-      geometry.setAttribute('color', colors);
+      colors.needsUpdate = true;
       geometry.computeVertexNormals();
       return;
     }
@@ -152,33 +174,52 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
       const vertexColor = baseColor.clone();
 
       entries.forEach(entry => {
-        const entryX = ((entry.timestamp - minTime) / timeRange) * 54 - 27;
+        // Center the peak if there's only one entry, otherwise map to time
+        const entryX = entries.length === 1 ? 0 : ((entry.timestamp - minTime) / timeRange) * 50 - 25;
         const entryZ = emotionZMap[entry.analysis.dominantEmotions[0]] || 0;
-        const influence = Math.exp(-((x - entryX)**2 + (z - entryZ)**2) / 18);
-        height += entry.analysis.intensity * 0.9 * influence;
-        vertexColor.lerp(emotionColors[entry.analysis.dominantEmotions[0]] || baseColor, influence * 1.1);
+        const distSq = (x - entryX)**2 + (z - entryZ)**2;
+        const influence = Math.exp(-distSq / 24);
+        
+        height += entry.analysis.intensity * 1.1 * influence;
+        const targetColor = emotionColors[entry.analysis.dominantEmotions[0]] || baseColor;
+        vertexColor.lerp(targetColor, influence * 1.2);
       });
 
-      height += Math.sin(x * 0.25 + z * 0.25) * 0.4;
+      // Ambient terrain noise
+      height += Math.sin(x * 0.2 + z * 0.2) * 0.3;
       position.setY(i, height);
       colors.setXYZ(i, vertexColor.r, vertexColor.g, vertexColor.b);
     }
+    
     position.needsUpdate = true;
-    geometry.setAttribute('color', colors);
+    colors.needsUpdate = true;
     geometry.computeVertexNormals();
 
+    // Landmark visualization for recent entries
     latestEntries.forEach(entry => {
-      const entryX = ((entry.timestamp - minTime) / timeRange) * 54 - 27;
+      const entryX = entries.length === 1 ? 0 : ((entry.timestamp - minTime) / timeRange) * 50 - 25;
       const entryZ = emotionZMap[entry.analysis.dominantEmotions[0]] || 0;
+      
+      // Calculate precise height at this point
       let h = 0;
       entries.forEach(e => {
-        const ex = ((e.timestamp - minTime) / timeRange) * 54 - 27;
+        const ex = entries.length === 1 ? 0 : ((e.timestamp - minTime) / timeRange) * 50 - 25;
         const ez = emotionZMap[e.analysis.dominantEmotions[0]] || 0;
-        h += e.analysis.intensity * 0.9 * Math.exp(-((entryX - ex)**2 + (entryZ - ez)**2) / 18);
+        h += e.analysis.intensity * 1.1 * Math.exp(-((entryX - ex)**2 + (entryZ - ez)**2) / 24);
       });
+      
       const color = emotionColors[entry.analysis.dominantEmotions[0]] || new THREE.Color(0xffffff);
-      const sphere = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 2), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2, transparent: true, opacity: 0.8 }));
-      sphere.position.set(entryX, h + 1, entryZ);
+      const sphere = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.7, 2), 
+        new THREE.MeshStandardMaterial({ 
+          color, 
+          emissive: color, 
+          emissiveIntensity: 1.5, 
+          transparent: true, 
+          opacity: 0.9 
+        })
+      );
+      sphere.position.set(entryX, h + 1.2, entryZ);
       (sphere as any).userData = { entry };
       landmarksRef.current.add(sphere);
     });
@@ -188,15 +229,20 @@ const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
     <div className="w-full relative glass rounded-3xl overflow-hidden h-[550px] mb-8 border border-white/10 shadow-2xl">
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing bg-[#0a0a0c]" />
       {selectedEntry && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass p-6 rounded-2xl w-80 shadow-2xl animate-in fade-in zoom-in duration-300">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass p-6 rounded-2xl w-80 shadow-2xl animate-in fade-in zoom-in duration-300 pointer-events-auto">
           <button onClick={() => setSelectedEntry(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors p-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+          <div className="mb-2">
+             <span className="text-[9px] text-gray-500 uppercase tracking-widest">{new Date(selectedEntry.timestamp).toLocaleDateString()}</span>
+          </div>
           <p className="text-white text-sm font-serif italic mb-4">"{selectedEntry.analysis.summary}"</p>
           <div className="flex flex-wrap gap-2">
-            {selectedEntry.analysis.dominantEmotions.map(e => <span key={e} className="text-[8px] uppercase tracking-tighter bg-white/5 border border-white/10 px-2 py-1 rounded-full text-gray-400">{e}</span>)}
+            {selectedEntry.analysis.dominantEmotions.map(e => (
+              <span key={e} className="text-[8px] uppercase tracking-tighter bg-white/5 border border-white/10 px-2 py-1 rounded-full text-gray-300" style={{ borderColor: '#' + (emotionColors[e] || baseColor).getHexString() + '44' }}>{e}</span>
+            ))}
           </div>
         </div>
       )}
-      {entries.length === 0 && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 font-serif italic text-xl">The landscape is silent.</div>}
+      {entries.length === 0 && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/20 font-serif italic text-xl">The landscape is waiting for a memory.</div>}
     </div>
   );
 };
