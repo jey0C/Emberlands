@@ -1,0 +1,196 @@
+
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { MemoryEntry, EmotionCategory } from '../types';
+
+interface LandscapeProps {
+  entries: MemoryEntry[];
+  onEntryHover: (entry: MemoryEntry | null) => void;
+}
+
+const emotionColors: Record<EmotionCategory, THREE.Color> = {
+  [EmotionCategory.Joy]: new THREE.Color('#fbbf24'),
+  [EmotionCategory.Sorrow]: new THREE.Color('#60a5fa'),
+  [EmotionCategory.Anger]: new THREE.Color('#f87171'),
+  [EmotionCategory.Fear]: new THREE.Color('#a78bfa'),
+  [EmotionCategory.Calm]: new THREE.Color('#34d399'),
+  [EmotionCategory.Excitement]: new THREE.Color('#f472b6'),
+  [EmotionCategory.Anxiety]: new THREE.Color('#fb923c'),
+  [EmotionCategory.Awe]: new THREE.Color('#22d3ee'),
+};
+
+const emotionZMap: Record<EmotionCategory, number> = {
+  [EmotionCategory.Joy]: -12, [EmotionCategory.Sorrow]: 12, [EmotionCategory.Anger]: 4, [EmotionCategory.Fear]: 16,
+  [EmotionCategory.Calm]: 0, [EmotionCategory.Excitement]: -6, [EmotionCategory.Anxiety]: 8, [EmotionCategory.Awe]: -16,
+};
+
+const Landscape: React.FC<LandscapeProps> = ({ entries, onEntryHover }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedEntry, setSelectedEntry] = useState<MemoryEntry | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const meshRef = useRef<THREE.Mesh | null>(null);
+  const landmarksRef = useRef<THREE.Group>(new THREE.Group());
+  const controlsRef = useRef<OrbitControls | null>(null);
+
+  const latestEntries = useMemo(() => [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8), [entries]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0c);
+    scene.fog = new THREE.FogExp2(0x0a0a0c, 0.02);
+    sceneRef.current = scene;
+
+    const camera = new THREE.PerspectiveCamera(55, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 1000);
+    camera.position.set(0, 20, 30);
+    cameraRef.current = camera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    containerRef.current.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.03;
+    controls.maxPolarAngle = Math.PI / 2.1;
+    controlsRef.current = controls;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x000000, 3));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 4);
+    dirLight.position.set(10, 30, 10);
+    scene.add(dirLight);
+
+    const geometry = new THREE.PlaneGeometry(64, 44, 160, 160);
+    geometry.rotateX(-Math.PI / 2);
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3, vertexColors: true, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+    meshRef.current = mesh;
+    scene.add(landmarksRef.current);
+
+    const animate = (time: number) => {
+      if (controlsRef.current) controlsRef.current.update();
+      landmarksRef.current.children.forEach(l => {
+        l.position.y += Math.sin(time * 0.002 + l.id) * 0.005;
+        (l as THREE.Mesh).rotation.y += 0.01;
+      });
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+
+    const onPointerDown = (e: MouseEvent) => {
+      if (!containerRef.current || !cameraRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, cameraRef.current);
+      const intersects = raycaster.intersectObjects(landmarksRef.current.children);
+      if (intersects.length > 0) setSelectedEntry((intersects[0].object as any).userData.entry);
+      else setSelectedEntry(null);
+    };
+    containerRef.current.addEventListener('mousedown', onPointerDown);
+
+    const handleResize = () => {
+      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
+      cameraRef.current.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      rendererRef.current?.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const geometry = mesh.geometry as THREE.PlaneGeometry;
+    const position = geometry.getAttribute('position');
+    const colors = new THREE.Float32BufferAttribute(position.count * 3, 3);
+    const baseColor = new THREE.Color(0x1a1a1e);
+
+    while(landmarksRef.current.children.length) landmarksRef.current.remove(landmarksRef.current.children[0]);
+
+    if (entries.length === 0) {
+      for (let i = 0; i < position.count; i++) {
+        position.setY(i, 0);
+        colors.setXYZ(i, baseColor.r, baseColor.g, baseColor.b);
+      }
+      position.needsUpdate = true;
+      geometry.setAttribute('color', colors);
+      geometry.computeVertexNormals();
+      return;
+    }
+
+    const sorted = [...entries].sort((a, b) => a.timestamp - b.timestamp);
+    const minTime = sorted[0].timestamp;
+    const timeRange = (sorted[sorted.length - 1].timestamp - minTime) || 1;
+
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i);
+      const z = position.getZ(i);
+      let height = 0;
+      const vertexColor = baseColor.clone();
+
+      entries.forEach(entry => {
+        const entryX = ((entry.timestamp - minTime) / timeRange) * 54 - 27;
+        const entryZ = emotionZMap[entry.analysis.dominantEmotions[0]] || 0;
+        const influence = Math.exp(-((x - entryX)**2 + (z - entryZ)**2) / 18);
+        height += entry.analysis.intensity * 0.9 * influence;
+        vertexColor.lerp(emotionColors[entry.analysis.dominantEmotions[0]] || baseColor, influence * 1.1);
+      });
+
+      height += Math.sin(x * 0.25 + z * 0.25) * 0.4;
+      position.setY(i, height);
+      colors.setXYZ(i, vertexColor.r, vertexColor.g, vertexColor.b);
+    }
+    position.needsUpdate = true;
+    geometry.setAttribute('color', colors);
+    geometry.computeVertexNormals();
+
+    latestEntries.forEach(entry => {
+      const entryX = ((entry.timestamp - minTime) / timeRange) * 54 - 27;
+      const entryZ = emotionZMap[entry.analysis.dominantEmotions[0]] || 0;
+      let h = 0;
+      entries.forEach(e => {
+        const ex = ((e.timestamp - minTime) / timeRange) * 54 - 27;
+        const ez = emotionZMap[e.analysis.dominantEmotions[0]] || 0;
+        h += e.analysis.intensity * 0.9 * Math.exp(-((entryX - ex)**2 + (entryZ - ez)**2) / 18);
+      });
+      const color = emotionColors[entry.analysis.dominantEmotions[0]] || new THREE.Color(0xffffff);
+      const sphere = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 2), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2, transparent: true, opacity: 0.8 }));
+      sphere.position.set(entryX, h + 1, entryZ);
+      (sphere as any).userData = { entry };
+      landmarksRef.current.add(sphere);
+    });
+  }, [entries, latestEntries]);
+
+  return (
+    <div className="w-full relative glass rounded-3xl overflow-hidden h-[550px] mb-8 border border-white/10 shadow-2xl">
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing bg-[#0a0a0c]" />
+      {selectedEntry && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass p-6 rounded-2xl w-80 shadow-2xl animate-in fade-in zoom-in duration-300">
+          <button onClick={() => setSelectedEntry(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors p-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+          <p className="text-white text-sm font-serif italic mb-4">"{selectedEntry.analysis.summary}"</p>
+          <div className="flex flex-wrap gap-2">
+            {selectedEntry.analysis.dominantEmotions.map(e => <span key={e} className="text-[8px] uppercase tracking-tighter bg-white/5 border border-white/10 px-2 py-1 rounded-full text-gray-400">{e}</span>)}
+          </div>
+        </div>
+      )}
+      {entries.length === 0 && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 font-serif italic text-xl">The landscape is silent.</div>}
+    </div>
+  );
+};
+
+export default Landscape;

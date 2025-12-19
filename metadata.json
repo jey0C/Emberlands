@@ -1,0 +1,8 @@
+{
+  "name": "Emotional Memory Mapper",
+  "description": "A private application that transforms personal moments into a living 3D emotional landscape, helping users reflect on emotional patterns through data-driven art.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
