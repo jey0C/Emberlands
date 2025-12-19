@@ -15,6 +15,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [includeLocation, setIncludeLocation] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,14 +24,17 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
     if ((!text.trim() && !image) || isSubmitting) return;
 
     setIsSubmitting(true);
+    setError(null);
     let userCoords: { lat: number, lng: number } | undefined;
 
     if (includeLocation) {
       try {
-        const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+        const pos = await new Promise<GeolocationPosition>((res, rej) => {
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 });
+        });
         userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       } catch (err) {
-        console.warn("Location permission denied or unavailable.");
+        console.warn("Location permission denied or timed out.");
       }
     }
 
@@ -43,15 +47,17 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
         timestamp: Date.now(),
         rawText: text,
         imageUrl: image || undefined,
-        parentId: parentEntry?.id,
+        parentId: parentEntry?.id || undefined,
         location,
         analysis
       };
+      
       onEntryCreated(newEntry);
       setText('');
       setImage(null);
-    } catch (error) {
-      console.error("Failed to analyze memory:", error);
+    } catch (err: any) {
+      console.error("Failed to analyze memory:", err);
+      setError(err.message || "Something went wrong during analysis.");
     } finally {
       setIsSubmitting(false);
     }
@@ -73,7 +79,10 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
       return;
     }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      setError("Speech recognition is not supported in this browser.");
+      return;
+    }
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -84,6 +93,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
       }
     };
     recognition.onend = () => setIsRecording(false);
+    recognition.onerror = () => setIsRecording(false);
     recognition.start();
     recognitionRef.current = recognition;
     setIsRecording(true);
@@ -116,12 +126,18 @@ const InputArea: React.FC<InputAreaProps> = ({ onEntryCreated, parentEntry, onCa
             )}
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => { setText(e.target.value); if(error) setError(null); }}
               placeholder={parentEntry ? "Expand on this feeling..." : (image ? "Describe this moment..." : "A moment captured...")}
               className="w-full h-32 bg-transparent text-xl font-serif italic outline-none resize-none placeholder-gray-600 focus:placeholder-gray-500 transition-all"
               disabled={isSubmitting}
             />
           </div>
+
+          {error && (
+            <div className="text-[10px] text-red-400 bg-red-400/10 px-3 py-2 rounded-lg border border-red-400/20 animate-in fade-in">
+              {error}
+            </div>
+          )}
           
           <div className="flex items-center justify-between">
             <div className="flex gap-2">

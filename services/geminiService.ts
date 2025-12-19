@@ -15,22 +15,22 @@ const extractJson = (text: string) => {
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("Failed to parse JSON from response:", text);
-    throw new Error("Invalid model response format");
+    throw new Error("AI returned an invalid data format. Please try again.");
   }
 };
 
 const getAIInstance = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "undefined") {
-    console.error("GEMINI API KEY MISSING: Ensure API_KEY is set in your deployment environment variables.");
-    throw new Error("Application configuration incomplete: API Key missing.");
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    console.error("GEMINI API KEY MISSING");
+    throw new Error("API Key is missing. Please ensure your environment is configured.");
   }
   return new GoogleGenAI({ apiKey });
 };
 
 export const analyzeMemory = async (text: string, imageData?: string, userCoords?: { lat: number, lng: number }): Promise<MemoryEntry['analysis'] & { location?: { lat: number, lng: number, name?: string } }> => {
   const ai = getAIInstance();
-  const parts: any[] = [{ text: `Analyze this personal moment: "${text || "No text provided (refer to image)"}". ${userCoords ? `The user is currently at Lat: ${userCoords.lat}, Lng: ${userCoords.lng}.` : ''}` }];
+  const parts: any[] = [{ text: `Analyze this moment: "${text || "(Visual input provided)"}". ${userCoords ? `Current Location: Lat ${userCoords.lat}, Lng ${userCoords.lng}.` : ''}` }];
   
   if (imageData && imageData.includes('base64,')) {
     try {
@@ -45,49 +45,54 @@ export const analyzeMemory = async (text: string, imageData?: string, userCoords
         }
       });
     } catch (e) {
-      console.error("Failed to process image data string", e);
+      console.error("Image processing error:", e);
     }
   }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: { parts },
-    config: {
-      systemInstruction: `You are an empathetic emotional data analyst. Extract emotional metadata and spatial context from the user's input.
-      
-      Rules:
-      1. Intensity: Scale of 1-10.
-      2. DominantEmotions: Pick up to 2-3 from [Joy, Sorrow, Anger, Fear, Calm, Excitement, Anxiety, Awe].
-      3. Themes: Provide 2-3 brief 1-2 word labels.
-      4. Summary: Write exactly one poetic, evocative sentence summarizing the feeling.
-      5. Location: If the text/image implies a specific place (beach, home, Paris), return lat/lng. Use userCoords as guidance.
-      
-      Output ONLY valid JSON.`,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          intensity: { type: Type.NUMBER },
-          dominantEmotions: { type: Type.ARRAY, items: { type: Type.STRING } },
-          themes: { type: Type.ARRAY, items: { type: Type.STRING } },
-          summary: { type: Type.STRING },
-          location: {
-            type: Type.OBJECT,
-            properties: {
-              lat: { type: Type.NUMBER },
-              lng: { type: Type.NUMBER },
-              name: { type: Type.STRING }
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: { parts },
+      config: {
+        systemInstruction: `You are an empathetic emotional data analyst. Extract emotional metadata and spatial context.
+        
+        Guidelines:
+        - Intensity: 1-10 scale.
+        - DominantEmotions: Choose 1-3 from: [Joy, Sorrow, Anger, Fear, Calm, Excitement, Anxiety, Awe].
+        - Themes: 2-3 short labels.
+        - Summary: ONE poetic, evocative sentence.
+        - Location: Suggest a lat/lng if a specific place is implied by text or image.
+        
+        Output ONLY valid JSON.`,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            intensity: { type: Type.NUMBER },
+            dominantEmotions: { type: Type.ARRAY, items: { type: Type.STRING } },
+            themes: { type: Type.ARRAY, items: { type: Type.STRING } },
+            summary: { type: Type.STRING },
+            location: {
+              type: Type.OBJECT,
+              properties: {
+                lat: { type: Type.NUMBER },
+                lng: { type: Type.NUMBER },
+                name: { type: Type.STRING }
+              }
             }
-          }
-        },
-        required: ['intensity', 'dominantEmotions', 'themes', 'summary']
+          },
+          required: ['intensity', 'dominantEmotions', 'themes', 'summary']
+        }
       }
-    }
-  });
+    });
 
-  const output = response.text;
-  if (!output) throw new Error("Empty response from AI");
-  return extractJson(output);
+    const output = response.text;
+    if (!output) throw new Error("The AI provided an empty response. It might have been filtered for safety.");
+    return extractJson(output);
+  } catch (err: any) {
+    if (err.message?.includes('API_KEY_INVALID')) throw new Error("Invalid API Key.");
+    throw err;
+  }
 };
 
 export const generateInsights = async (history: MemoryEntry[]): Promise<Insight[]> => {
@@ -97,28 +102,33 @@ export const generateInsights = async (history: MemoryEntry[]): Promise<Insight[
     `Time: ${new Date(h.timestamp).toISOString()}, Emotions: ${h.analysis.dominantEmotions.join(', ')}, Intensity: ${h.analysis.intensity}, Summary: ${h.analysis.summary}`
   ).join('\n');
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Based on the following emotional history, identify 2-3 gentle, non-prescriptive patterns:\n${historyString}`,
-    config: {
-      systemInstruction: `Provide reflective insights without advice. Help the user see patterns they might have missed. Return a JSON array of Insight objects.`,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ['pattern', 'spike', 'cycle'] }
-          },
-          required: ['title', 'description', 'type']
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Examine this history and provide 2-3 reflective insights on patterns:\n${historyString}`,
+      config: {
+        systemInstruction: `Return a JSON array of Insight objects. Be reflective and pattern-oriented. No medical advice.`,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              type: { type: Type.STRING, enum: ['pattern', 'spike', 'cycle'] }
+            },
+            required: ['title', 'description', 'type']
+          }
         }
       }
-    }
-  });
+    });
 
-  const output = response.text;
-  if (!output) return [];
-  return extractJson(output);
+    const output = response.text;
+    if (!output) return [];
+    return extractJson(output);
+  } catch (e) {
+    console.warn("Insight generation failed:", e);
+    return [];
+  }
 };
