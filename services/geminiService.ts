@@ -4,7 +4,6 @@ import { MemoryEntry, EmotionCategory, Insight } from "../types";
 
 const extractJson = (text: string) => {
   try {
-    // Attempt to remove markdown code blocks if present
     const cleanText = text.replace(/```json|```/gi, '').trim();
     return JSON.parse(cleanText);
   } catch (e) {
@@ -13,8 +12,17 @@ const extractJson = (text: string) => {
   }
 };
 
+const getAIInstance = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey === "undefined") {
+    console.error("GEMINI API KEY MISSING: Ensure API_KEY is set in your deployment environment variables.");
+    throw new Error("Application configuration incomplete: API Key missing.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const analyzeMemory = async (text: string, imageData?: string, userCoords?: { lat: number, lng: number }): Promise<MemoryEntry['analysis'] & { location?: { lat: number, lng: number, name?: string } }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   const parts: any[] = [{ text: `Analyze this personal moment: "${text || "No text provided (refer to image)"}". ${userCoords ? `The user is currently at Lat: ${userCoords.lat}, Lng: ${userCoords.lng}.` : ''}` }];
   
   if (imageData && imageData.includes('base64,')) {
@@ -77,7 +85,7 @@ export const analyzeMemory = async (text: string, imageData?: string, userCoords
 
 export const generateInsights = async (history: MemoryEntry[]): Promise<Insight[]> => {
   if (history.length < 3) return [];
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   const historyString = history.map(h => 
     `Time: ${new Date(h.timestamp).toISOString()}, Emotions: ${h.analysis.dominantEmotions.join(', ')}, Intensity: ${h.analysis.intensity}, Summary: ${h.analysis.summary}`
   ).join('\n');
