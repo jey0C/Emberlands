@@ -24,7 +24,6 @@ const formatDate = (ts: number) => {
   }).format(ts);
 };
 
-// Fixed: Using React.FC to properly handle standard React props like 'key' in mapped lists
 const MemoryCard: React.FC<{ 
   entry: MemoryEntry; 
   isSub?: boolean;
@@ -53,7 +52,17 @@ const MemoryCard: React.FC<{
         )}
         <div className="flex-grow">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[10px] text-gray-500 font-medium">{formatDate(entry.timestamp)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500 font-medium">{formatDate(entry.timestamp)}</span>
+              {entry.location && (
+                <div className="flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
+                  <svg className="w-2.5 h-2.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <span className="text-[8px] text-gray-500 uppercase tracking-tighter">
+                    {entry.location.name || `${entry.location.lat.toFixed(2)}, ${entry.location.lng.toFixed(2)}`}
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {!isSub && onStartThread && (
                 <button 
@@ -186,7 +195,7 @@ const App: React.FC = () => {
         const json = JSON.parse(result);
         if (Array.isArray(json)) {
           if (window.confirm(`Restore ${json.length} memories? Current data will be replaced.`)) {
-            setEntries([]); // Clear first to ensure a clean swap
+            setEntries([]); 
             setTimeout(() => {
               setEntries(json);
               setLandscapeKey(prev => prev + 1);
@@ -220,10 +229,13 @@ const App: React.FC = () => {
     const hasVault = !!localStorage.getItem('ember_vault_key');
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[#050505]">
-        <div className="w-full max-w-md glass p-10 rounded-[2.5rem] text-center space-y-8 animate-in fade-in zoom-in-95 duration-700">
-          <div className="space-y-2">
-            <h1 className="text-4xl font-serif text-white italic tracking-tight">Emberlands</h1>
-            <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em]">{hasVault ? "Vault Locked" : "Secure your Archive"}</p>
+        <div className="w-full max-w-md glass p-10 rounded-[2.5rem] text-center space-y-10 animate-in fade-in zoom-in-95 duration-700">
+          <div className="flex flex-col items-center gap-6">
+            {/* Logo removed from here */}
+            <div className="space-y-2 mt-4">
+              <h1 className="text-4xl font-serif text-white italic tracking-tight">Emberlands</h1>
+              <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em]">{hasVault ? "Vault Locked" : "Secure your Archive"}</p>
+            </div>
           </div>
           <form onSubmit={handleLogin} className="space-y-6">
             <input 
@@ -250,10 +262,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen relative flex flex-col items-center">
-      {/* Vault Panel Backdrop */}
       {showVaultPanel && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity" onClick={() => setShowVaultPanel(false)} />}
       
-      {/* Vault Slide-out Panel */}
       <div className={`fixed right-0 top-0 h-full w-full max-w-sm glass border-l border-white/10 z-50 p-10 transform transition-transform duration-500 flex flex-col ${showVaultPanel ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex justify-between items-center mb-12">
           <h2 className="text-2xl font-serif text-white italic">Vault Management</h2>
@@ -301,11 +311,13 @@ const App: React.FC = () => {
         <div className="text-[9px] text-gray-600 tracking-widest uppercase text-center mt-8">Local-Only &bull; Encrypted Session</div>
       </div>
 
-      {/* Main UI Header - Responsive Fixes */}
       <header className="w-full max-w-6xl px-8 pt-16 pb-12 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-8 sm:gap-0">
-        <div>
-          <h1 className="text-5xl font-serif text-white tracking-tighter italic">Emberlands</h1>
-          <p className="text-gray-500 font-light mt-2 tracking-[0.2em] uppercase text-[10px]">Private Emotional Terrain</p>
+        <div className="flex items-center gap-4">
+          {/* Logo removed from here */}
+          <div>
+            <h1 className="text-5xl font-serif text-white tracking-tighter italic">Emberlands</h1>
+            <p className="text-gray-500 font-light mt-2 tracking-[0.2em] uppercase text-[10px]">Private Emotional Terrain</p>
+          </div>
         </div>
         <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-10 w-full sm:w-auto">
           <div className="text-left sm:text-right">

@@ -30,7 +30,7 @@ const getAIInstance = () => {
 
 export const analyzeMemory = async (text: string, imageData?: string, userCoords?: { lat: number, lng: number }): Promise<MemoryEntry['analysis'] & { location?: { lat: number, lng: number, name?: string } }> => {
   const ai = getAIInstance();
-  const parts: any[] = [{ text: `Analyze this moment: "${text || "(Visual input provided)"}". ${userCoords ? `Current Location: Lat ${userCoords.lat}, Lng ${userCoords.lng}.` : ''}` }];
+  const parts: any[] = [{ text: `Analyze this moment: "${text || "(Visual input provided)"}". ${userCoords ? `Current GPS Location: Lat ${userCoords.lat}, Lng ${userCoords.lng}.` : ''}` }];
   
   if (imageData && imageData.includes('base64,')) {
     try {
@@ -54,6 +54,7 @@ export const analyzeMemory = async (text: string, imageData?: string, userCoords
       model: 'gemini-3-flash-preview',
       contents: { parts },
       config: {
+        thinkingConfig: { thinkingBudget: 0 }, 
         systemInstruction: `You are an empathetic emotional data analyst. Extract emotional metadata and spatial context.
         
         Guidelines:
@@ -61,7 +62,7 @@ export const analyzeMemory = async (text: string, imageData?: string, userCoords
         - DominantEmotions: Choose 1-3 from: [Joy, Sorrow, Anger, Fear, Calm, Excitement, Anxiety, Awe].
         - Themes: 2-3 short labels.
         - Summary: ONE poetic, evocative sentence.
-        - Location: Suggest a lat/lng if a specific place is implied by text or image.
+        - Location: Provide location details ONLY if GPS coordinates are provided or if a specific recognizable landmark is clearly visible in the image or explicitly named in the text. DO NOT guess or suggest generic locations like "Silicon Valley" unless contextually certain.
         
         Output ONLY valid JSON.`,
         responseMimeType: 'application/json',
@@ -87,7 +88,7 @@ export const analyzeMemory = async (text: string, imageData?: string, userCoords
     });
 
     const output = response.text;
-    if (!output) throw new Error("The AI provided an empty response. It might have been filtered for safety.");
+    if (!output) throw new Error("The AI provided an empty response.");
     return extractJson(output);
   } catch (err: any) {
     if (err.message?.includes('API_KEY_INVALID')) throw new Error("Invalid API Key.");
@@ -107,6 +108,7 @@ export const generateInsights = async (history: MemoryEntry[]): Promise<Insight[
       model: 'gemini-3-flash-preview',
       contents: `Examine this history and provide 2-3 reflective insights on patterns:\n${historyString}`,
       config: {
+        thinkingConfig: { thinkingBudget: 0 },
         systemInstruction: `Return a JSON array of Insight objects. Be reflective and pattern-oriented. No medical advice.`,
         responseMimeType: 'application/json',
         responseSchema: {
